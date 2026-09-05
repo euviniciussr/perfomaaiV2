@@ -736,7 +736,6 @@ aside + * table{display:block!important;overflow-x:auto!important}
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button style="background:rgba(249,115,22,.12);border:1px solid rgba(249,115,22,.3);color:#f97316;font-family:inherit;font-size:12.5px;font-weight:700;padding:10px 16px;border-radius:9px;cursor:pointer;">+ Peso</button>
-            <button style="background:#131a26;border:1px solid #1e2633;color:#9aa4b2;font-family:inherit;font-size:12.5px;font-weight:700;padding:10px 16px;border-radius:9px;cursor:pointer;">+ Medidas</button>
             <div style="position:relative;display:inline-flex;">
               <button style="background:#131a26;border:1px solid #1e2633;color:#9aa4b2;font-family:inherit;font-size:12.5px;font-weight:700;padding:10px 16px;border-radius:9px;cursor:pointer;">{{ fotoUploadLabel }}</button>
               <input type="file" accept="image/*" sc-camel-on-change="{{ onFotoUpload }}" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;">
@@ -749,12 +748,46 @@ aside + * table{display:block!important;overflow-x:auto!important}
           <sc-if value="{{ semFotosEvolucao }}" hint-placeholder-val="{{ true }}">
             <div style="font-size:12.5px;color:#66707e;">Nenhuma foto enviada ainda.</div>
           </sc-if>
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;">
-            <sc-for list="{{ fotosEvolucao }}" as="f" hint-placeholder-count="4">
-              <img src="{{ f.url }}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;border:1px solid #1e2633;">
-            </sc-for>
-          </div>
+          <sc-for list="{{ fotosPorData }}" as="grupo" hint-placeholder-count="2">
+            <div style="font-size:11px;font-weight:800;color:#66707e;text-transform:uppercase;letter-spacing:.03em;margin:14px 0 8px;">{{ grupo.dataLabel }}</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;">
+              <sc-for list="{{ grupo.fotos }}" as="f" hint-placeholder-count="4">
+                <div style="position:relative;">
+                  <img src="{{ f.url }}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;border:1px solid #1e2633;">
+                  <sc-if value="{{ f.podeExcluir }}" hint-placeholder-val="{{ false }}">
+                    <button type="button" sc-camel-on-click="{{ f.onExcluir }}" style="position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:7px;background:rgba(10,13,19,.75);border:1px solid rgba(255,255,255,.25);color:#f87171;font-size:13px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
         </section>
+
+        <sc-if value="{{ temComparacoes }}" hint-placeholder-val="{{ false }}">
+          <section style="background:#10151f;border:1px solid #1a2130;border-radius:16px;padding:20px 24px;margin-bottom:16px;">
+            <div style="font-size:14px;font-weight:800;margin-bottom:14px;">Comparações</div>
+            <sc-for list="{{ comparacoesList }}" as="c" hint-placeholder-count="1">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px 0;border-top:1px solid #171d29;">
+                <div>
+                  <div style="font-size:10.5px;font-weight:800;color:#3b82f6;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Antes{{ c.dataAntesLabel }}</div>
+                  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:6px;">
+                    <sc-for list="{{ c.fotosAntes }}" as="f" hint-placeholder-count="1">
+                      <img src="{{ f.url }}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:8px;border:1px solid #1e2633;">
+                    </sc-for>
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size:10.5px;font-weight:800;color:#4ade80;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Depois{{ c.dataDepoisLabel }}</div>
+                  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:6px;">
+                    <sc-for list="{{ c.fotosDepois }}" as="f" hint-placeholder-count="1">
+                      <img src="{{ f.url }}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:8px;border:1px solid #1e2633;">
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+            </sc-for>
+          </section>
+        </sc-if>
 
         <section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:16px;">
           <div style="background:#10151f;border:1px solid #1a2130;border-radius:14px;padding:20px;">
@@ -1068,6 +1101,15 @@ function expandirSeriesLinhas(linhas) {
 // Fallback pro timer de descanso quando o personal só preencheu o campo de
 // texto livre (ex.: "1min", "90s", "1-2min") e não o campo estruturado em
 // segundos — assim o timer já funciona com o que já estava cadastrado.
+// "Hoje"/data local em YYYY-MM-DD — nunca usar Date.toISOString() pra isso:
+// ela converte pra UTC, então entre ~21h e meia-noite no horário de
+// Brasília (UTC-3) ela já devolve a data de amanhã, gravando/comparando
+// treino, peso etc. no dia errado.
+function dataLocalStr(d) {
+  d = d || new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 function parseDescansoSegundos(texto) {
   if (!texto) return null;
   const t = texto.toLowerCase().trim();
@@ -1098,7 +1140,7 @@ class Component extends DCLogic {
     convitesPendentes: [], alunoNome: '', alunoNomeCompleto: '', alunoEmail: '', alunoStatus: '', trainerNome: '',
     notifOpen: false, notificacoes: [], treinosPlano: [], agendamentos: [],
     pesoInput: '', pesoHistorico: [], execucoes: [], videoModalUrl: '',
-    avaliacoesFisicas: [],
+    avaliacoesFisicas: [], medidasCorporais: [], comparacoesFotos: [],
     cargasSalvas: {}, cargasEditando: {}, cargasInputTemp: {}, cargasSalvando: {},
     feedbackGeralTexto: '', feedbackGeralEnviando: false, feedbackGeralEnviado: false,
     feedbackTreinoTexto: {}, feedbackTreinoEnviando: {}, feedbackTreinoEnviado: {},
@@ -1112,6 +1154,7 @@ class Component extends DCLogic {
     this.loadTreino();
     this.loadConvitesPendentes();
     this.loadNotificacoes();
+    this._restaurarDescanso();
   }
 
   async loadConvitesPendentes() {
@@ -1181,16 +1224,18 @@ class Component extends DCLogic {
     supabaseClient.from('trainers').select('nome').eq('id', cliente.trainer_id).maybeSingle()
       .then(({ data: trainer }) => this.setState({ trainerNome: (trainer && trainer.nome) || '' }));
     const desde90 = new Date(); desde90.setDate(desde90.getDate() - 90);
-    const desde90Str = desde90.toISOString().slice(0, 10);
-    const hojeStr = new Date().toISOString().slice(0, 10);
-    const [{ data: treinos }, { data: fotos }, { data: dietas }, { data: agendamentos }, { data: pesos }, { data: execucoes }, { data: avaliacoesFisicas }] = await Promise.all([
+    const desde90Str = dataLocalStr(desde90);
+    const hojeStr = dataLocalStr();
+    const [{ data: treinos }, { data: fotos }, { data: dietas }, { data: agendamentos }, { data: pesos }, { data: execucoes }, { data: avaliacoesFisicas }, { data: medidas }, { data: comparacoes }] = await Promise.all([
       supabaseClient.from('treinos').select('id, nome, dias_semana, ordem').eq('cliente_id', cliente.id).eq('habilitado', true).order('ordem', { ascending: true }),
       supabaseClient.from('fotos_evolucao').select('*').eq('cliente_id', cliente.id).order('created_at', { ascending: false }),
       supabaseClient.from('dietas').select('*').eq('cliente_id', cliente.id).eq('habilitado', true).order('created_at', { ascending: false }).limit(1),
       supabaseClient.from('agendamentos').select('*').eq('cliente_id', cliente.id).eq('concluido', false).order('data_lembrete', { ascending: true }),
       supabaseClient.from('registros_peso').select('*').eq('cliente_id', cliente.id).gte('data', desde90Str).order('data', { ascending: false }),
       supabaseClient.from('treino_execucoes').select('*').eq('cliente_id', cliente.id).gte('data', desde90Str),
-      supabaseClient.from('avaliacoes_fisicas').select('*').eq('cliente_id', cliente.id).order('data', { ascending: false })
+      supabaseClient.from('avaliacoes_fisicas').select('*').eq('cliente_id', cliente.id).order('data', { ascending: false }),
+      supabaseClient.from('medidas_corporais').select('*').eq('cliente_id', cliente.id).order('data', { ascending: false }),
+      supabaseClient.from('comparacoes_fotos').select('*').eq('cliente_id', cliente.id).order('created_at', { ascending: false })
     ]);
     const pesoHoje = (pesos || []).find(p => p.data === hojeStr);
     this.setState({
@@ -1198,7 +1243,8 @@ class Component extends DCLogic {
       treinosPlano: treinos || [], agendamentos: agendamentos || [],
       pesoHistorico: pesos || [], execucoes: execucoes || [],
       pesoInput: pesoHoje ? String(pesoHoje.peso) : '', pesoSalvo: !!pesoHoje,
-      avaliacoesFisicas: avaliacoesFisicas || []
+      avaliacoesFisicas: avaliacoesFisicas || [],
+      medidasCorporais: medidas || [], comparacoesFotos: comparacoes || []
     });
     if (!treinos || !treinos.length) return;
     const { data: itens } = await supabaseClient
@@ -1239,7 +1285,7 @@ class Component extends DCLogic {
     const raw = (this.state.cargasInputTemp[key] || '').trim();
     if (!raw) return;
     this.setState(s => ({ cargasSalvando: { ...s.cargasSalvando, [key]: true } }));
-    const hoje = new Date().toISOString().slice(0, 10);
+    const hoje = dataLocalStr();
     const { error } = await supabaseClient.from('serie_cargas').upsert({
       treino_exercicio_id: treinoExercicioId, cliente_id: this.state.clienteId, trainer_id: this.state.trainerId,
       serie_index: serieIndex, carga: raw, data: hoje, updated_at: new Date().toISOString()
@@ -1273,7 +1319,7 @@ class Component extends DCLogic {
   async onSalvarPeso() {
     const valor = parseFloat((this.state.pesoInput || '').replace(',', '.'));
     if (!valor || valor <= 0) return;
-    const hojeStr = new Date().toISOString().slice(0, 10);
+    const hojeStr = dataLocalStr();
     const { error } = await supabaseClient.from('registros_peso')
       .upsert({ cliente_id: this.state.clienteId, trainer_id: this.state.trainerId, peso: valor, data: hojeStr }, { onConflict: 'cliente_id,data' });
     if (error) { alert('Não foi possível salvar o peso: ' + error.message); return; }
@@ -1289,7 +1335,7 @@ class Component extends DCLogic {
     const exerciciosFeitos = { ...this.state.exerciciosFeitos };
     exDataHoje.forEach(te => { exerciciosFeitos[te.id] = true; });
     this.setState({ exerciciosFeitos });
-    const hoje = new Date().toISOString().slice(0, 10);
+    const hoje = dataLocalStr();
     if (exDataHoje.length) {
       await supabaseClient.from('treino_exercicio_execucoes').upsert(
         exDataHoje.map(te => ({ treino_exercicio_id: te.id, cliente_id: this.state.clienteId, trainer_id: this.state.trainerId, data: hoje })),
@@ -1307,7 +1353,7 @@ class Component extends DCLogic {
     const exerciciosFeitos = { ...this.state.exerciciosFeitos };
     if (jaFeito) delete exerciciosFeitos[treinoExercicioId]; else exerciciosFeitos[treinoExercicioId] = true;
     this.setState({ exerciciosFeitos });
-    const hoje = new Date().toISOString().slice(0, 10);
+    const hoje = dataLocalStr();
     if (jaFeito) {
       await supabaseClient.from('treino_exercicio_execucoes').delete()
         .eq('treino_exercicio_id', treinoExercicioId).eq('data', hoje);
@@ -1334,7 +1380,7 @@ class Component extends DCLogic {
       const segundos = te ? (te.descanso_segundos > 0 ? te.descanso_segundos : parseDescansoSegundos(te.intervalo_descanso)) : null;
       if (segundos > 0) this.iniciarDescanso(treinoExercicioId, segundos);
     }
-    const hoje = new Date().toISOString().slice(0, 10);
+    const hoje = dataLocalStr();
     if (jaFeita) {
       await supabaseClient.from('treino_serie_execucoes').delete()
         .eq('treino_exercicio_id', treinoExercicioId).eq('serie_index', serieIndex).eq('data', hoje);
@@ -1346,39 +1392,60 @@ class Component extends DCLogic {
     }
   }
 
-  // Timer de descanso: puramente local (não persiste), reinicia se outra
-  // série for marcada enquanto um descanso já está contando.
+  // Timer de descanso baseado em horário absoluto de término (fimEm), não
+  // em contagem de "ticks" — assim ele nunca perde tempo quando a aba fica
+  // em segundo plano/tela bloqueia (o navegador pausa/atrasa setInterval,
+  // mas o relógio real não para). Persistido em localStorage pra sobreviver
+  // a um refresh/fechar e reabrir a página; reinicia se outra série for
+  // marcada enquanto um descanso já está contando.
   iniciarDescanso(treinoExercicioId, segundos) {
+    const descansoAtivo = { treinoExercicioId, fimEm: Date.now() + segundos * 1000, total: segundos };
+    try { localStorage.setItem('descansoAtivo', JSON.stringify(descansoAtivo)); } catch (e) {}
+    this.setState({ descansoAtivo });
+    this._rodarIntervaloDescanso();
+  }
+
+  _rodarIntervaloDescanso() {
     if (this._descansoInterval) clearInterval(this._descansoInterval);
-    this.setState({ descansoAtivo: { treinoExercicioId, restante: segundos, total: segundos } });
     this._descansoInterval = setInterval(() => {
-      this.setState(s => {
-        if (!s.descansoAtivo) return {};
-        const restante = s.descansoAtivo.restante - 1;
-        if (restante <= 0) {
-          clearInterval(this._descansoInterval);
-          this._descansoInterval = null;
-          return { descansoAtivo: null };
-        }
-        return { descansoAtivo: { ...s.descansoAtivo, restante } };
-      });
+      const atual = this.state.descansoAtivo;
+      if (!atual || Date.now() >= atual.fimEm) {
+        clearInterval(this._descansoInterval);
+        this._descansoInterval = null;
+        try { localStorage.removeItem('descansoAtivo'); } catch (e) {}
+        this.setState({ descansoAtivo: null });
+        return;
+      }
+      this.setState({}); // só força recalcular "restante" (feito em renderVals a partir de fimEm)
     }, 1000);
+  }
+
+  // Ao recarregar a página/reabrir o app, retoma um descanso que ainda não
+  // tinha terminado (o tempo real já passou, não precisa recontar do zero).
+  _restaurarDescanso() {
+    let salvo = null;
+    try { salvo = JSON.parse(localStorage.getItem('descansoAtivo') || 'null'); } catch (e) {}
+    if (!salvo || !salvo.fimEm) return;
+    if (Date.now() >= salvo.fimEm) { try { localStorage.removeItem('descansoAtivo'); } catch (e) {} return; }
+    this.setState({ descansoAtivo: salvo });
+    this._rodarIntervaloDescanso();
   }
 
   pularDescanso() {
     if (this._descansoInterval) { clearInterval(this._descansoInterval); this._descansoInterval = null; }
+    try { localStorage.removeItem('descansoAtivo'); } catch (e) {}
     this.setState({ descansoAtivo: null });
   }
 
   // Finaliza um treino específico (upsert por dia — clicar de novo no mesmo
   // dia só atualiza, nunca duplica nem apaga o histórico de outros dias).
   async onFinalizarTreinoEspecifico(treinoId) {
-    const hojeStr = new Date().toISOString().slice(0, 10);
+    const hojeStr = dataLocalStr();
     const { error } = await supabaseClient.from('treino_execucoes')
       .upsert({ cliente_id: this.state.clienteId, trainer_id: this.state.trainerId, treino_id: treinoId, data: hojeStr }, { onConflict: 'cliente_id,treino_id,data' });
     if (error) { alert('Não foi possível finalizar o treino: ' + error.message); return; }
     const desde90 = new Date(); desde90.setDate(desde90.getDate() - 90);
-    const { data: execucoes } = await supabaseClient.from('treino_execucoes').select('*').eq('cliente_id', this.state.clienteId).gte('data', desde90.toISOString().slice(0, 10));
+    const { data: execucoes } = await supabaseClient.from('treino_execucoes').select('*').eq('cliente_id', this.state.clienteId).gte('data', dataLocalStr(desde90));
     this.setState({ execucoes: execucoes || [] });
   }
 
@@ -1389,7 +1456,7 @@ class Component extends DCLogic {
     e.target.value = '';
     if (!file) return;
     this.setState(s => ({ fotoTreinoUploading: { ...s.fotoTreinoUploading, [treinoId]: true } }));
-    const hoje = new Date().toISOString().slice(0, 10);
+    const hoje = dataLocalStr();
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
     const path = this.state.clienteId + '/treino-' + treinoId + '-' + hoje + '.' + ext;
     const { error: upErr } = await supabaseClient.storage.from('fotos-evolucao').upload(path, file, { upsert: true });
@@ -1484,10 +1551,17 @@ class Component extends DCLogic {
     const { error: upErr } = await supabaseClient.storage.from('fotos-evolucao').upload(path, file);
     if (upErr) { this.setState({ fotoUploadBusy: false }); alert('Não foi possível enviar a foto: ' + upErr.message); return; }
     await supabaseClient.from('fotos_evolucao').insert({
-      cliente_id: this.state.clienteId, trainer_id: this.state.trainerId, url: path, tipo: 'evolucao'
+      cliente_id: this.state.clienteId, trainer_id: this.state.trainerId, url: path, tipo: 'evolucao', enviado_por_aluno: true
     });
     const { data: fotos } = await supabaseClient.from('fotos_evolucao').select('*').eq('cliente_id', this.state.clienteId).order('created_at', { ascending: false });
     this.setState({ fotoUploadBusy: false, fotosEvolucao: await this.resolveFotoUrls(fotos) });
+  }
+
+  async onExcluirFoto(foto) {
+    if (!confirm('Excluir esta foto? Essa ação não poderá ser desfeita.')) return;
+    const { error } = await supabaseClient.from('fotos_evolucao').delete().eq('id', foto.id);
+    if (error) { alert('Não foi possível excluir a foto: ' + error.message); return; }
+    this.setState({ fotosEvolucao: this.state.fotosEvolucao.filter(f => f.id !== foto.id) });
   }
 
   renderVals() {
@@ -1624,12 +1698,63 @@ class Component extends DCLogic {
     });
     const ultimaAvaliacaoFisica = avaliacoesFisicasData[0] || null;
 
+    // Fotos agrupadas por data (histórico de evolução) — aluno só pode excluir
+    // as que ele mesmo enviou (enviado_por_aluno); a RLS já barra o resto.
+    const fotosPorDataMap = {};
+    this.state.fotosEvolucao.forEach(f => {
+      const d = (f.created_at || '').slice(0, 10);
+      if (!d) return;
+      (fotosPorDataMap[d] = fotosPorDataMap[d] || []).push(f);
+    });
+    const fotosPorData = Object.keys(fotosPorDataMap).sort((a, b) => b.localeCompare(a)).map(d => ({
+      dataLabel: new Date(d + 'T00:00:00').toLocaleDateString('pt-BR'),
+      fotos: fotosPorDataMap[d].map(f => ({
+        url: f.url,
+        podeExcluir: !!f.enviado_por_aluno,
+        onExcluir: () => this.onExcluirFoto(f)
+      }))
+    }));
+
+    const fotoPorId = {};
+    this.state.fotosEvolucao.forEach(f => { fotoPorId[f.id] = f; });
+    const comparacoesList = this.state.comparacoesFotos.map(c => {
+      const antes = (c.fotos_antes_ids || []).map(id => fotoPorId[id]).filter(Boolean);
+      const depois = (c.fotos_depois_ids || []).map(id => fotoPorId[id]).filter(Boolean);
+      const dataLabel = (f) => f ? ' — ' + new Date((f.created_at || '').slice(0, 10) + 'T00:00:00').toLocaleDateString('pt-BR') : '';
+      return {
+        fotosAntes: antes, fotosDepois: depois,
+        dataAntesLabel: dataLabel(antes[0]), dataDepoisLabel: dataLabel(depois[0])
+      };
+    });
+
+    // Medidas corporais: mostra a mais recente e a variação frente ao
+    // primeiro registro (trainer cadastra, aluno só visualiza).
+    const MEDIDAS_LABELS = [
+      ['braco_direito', 'Braço direito'], ['braco_esquerdo', 'Braço esquerdo'],
+      ['ombros', 'Ombros'], ['peitoral', 'Peitoral'],
+      ['cintura', 'Cintura'], ['abdomen', 'Abdômen'], ['quadril', 'Quadril'],
+      ['coxa_direita', 'Coxa direita'], ['coxa_esquerda', 'Coxa esquerda'],
+      ['panturrilha_direita', 'Panturrilha direita'], ['panturrilha_esquerda', 'Panturrilha esquerda']
+    ];
+    const medidasOrdenadas = this.state.medidasCorporais.slice().sort((a, b) => a.data.localeCompare(b.data));
+    const medidaMaisRecente = medidasOrdenadas[medidasOrdenadas.length - 1] || null;
+    const medidaInicial = medidasOrdenadas[0] || null;
+    const medidasData = medidaMaisRecente ? MEDIDAS_LABELS.map(([chave, label]) => {
+      const atual = medidaMaisRecente[chave];
+      const inicial = medidaInicial && medidaInicial !== medidaMaisRecente ? medidaInicial[chave] : null;
+      if (atual == null) return null;
+      const diff = (inicial != null) ? Number((atual - inicial).toFixed(1)) : null;
+      const delta = diff == null ? atual + ' cm' : (diff > 0 ? '+' : '') + diff + ' cm';
+      const pct = inicial ? Math.min(100, Math.round((atual / Math.max(atual, inicial)) * 100)) : 100;
+      return { label, w: pct + '%', cor: diff == null ? '#9aa4b2' : diff === 0 ? '#9aa4b2' : '#f97316', delta };
+    }).filter(Boolean) : [];
+
     const DIA_LABELS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
     const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
     const hoje = new Date();
     const hojeDow = hoje.getDay();
     const hojeMeiaNoite = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
-    const isoOf = (d) => d.toISOString().slice(0, 10);
+    const isoOf = (d) => dataLocalStr(d);
     const weekStart = new Date(hoje); weekStart.setDate(hoje.getDate() - hojeDow);
     const treinosPlano = this.state.treinosPlano;
     const treinoHoje = treinosPlano.find(tr => (tr.dias_semana || []).includes(hojeDow));
@@ -1644,9 +1769,13 @@ class Component extends DCLogic {
       const isPassado = dayDate < hojeMeiaNoite;
       const isHojeCel = i === hojeDow;
       let icon = '·', lbl = 'descanso', iconColor = '#66707e';
-      if (temTreino) {
-        if (feito) { icon = '✓'; lbl = 'feito'; iconColor = '#4ade80'; }
-        else if (isPassado) { icon = '·'; lbl = 'perdido'; iconColor = '#f87171'; }
+      // Um treino feito nesse dia sempre conta como "feito", mesmo que não
+      // fosse o dia agendado pra ele (o aluno pode trocar a ordem/dia dos
+      // treinos na prática) — só cai em "perdido" um dia agendado que
+      // passou sem NENHUM treino finalizado.
+      if (feito) { icon = '✓'; lbl = 'feito'; iconColor = '#4ade80'; }
+      else if (temTreino) {
+        if (isPassado) { icon = '·'; lbl = 'perdido'; iconColor = '#f87171'; }
         else { icon = '●'; lbl = 'treino'; iconColor = isHojeCel ? '#f97316' : '#9aa4b2'; }
       }
       return {
@@ -1814,6 +1943,7 @@ class Component extends DCLogic {
           });
           const seriesFeitasCount = seriesValidasData.filter(sv => sv.feita).length;
           const descansoAtivo = this.state.descansoAtivo && this.state.descansoAtivo.treinoExercicioId === e.teId ? this.state.descansoAtivo : null;
+          const descansoRestante = descansoAtivo ? Math.max(0, Math.round((descansoAtivo.fimEm - Date.now()) / 1000)) : 0;
           return {
             nome: e.nome,
             temAquecimento: e.seriesAquecimentoLinhas.length > 0,
@@ -1822,8 +1952,8 @@ class Component extends DCLogic {
             temSeriesValidas: seriesValidasData.length > 0,
             seriesFeitasLabel: seriesFeitasCount + ' de ' + seriesValidasData.length + (seriesValidasData.length === 1 ? ' série feita' : ' séries feitas'),
             descansoAtivo: !!descansoAtivo,
-            descansoLabel: descansoAtivo ? Math.floor(descansoAtivo.restante / 60) + ':' + String(descansoAtivo.restante % 60).padStart(2, '0') : '',
-            descansoPct: descansoAtivo ? Math.round((1 - descansoAtivo.restante / descansoAtivo.total) * 100) + '%' : '0%',
+            descansoLabel: descansoAtivo ? Math.floor(descansoRestante / 60) + ':' + String(descansoRestante % 60).padStart(2, '0') : '',
+            descansoPct: descansoAtivo ? Math.round((1 - descansoRestante / descansoAtivo.total) * 100) + '%' : '0%',
             onPularDescanso: () => this.pularDescanso(),
             carga: e.carga, descanso: e.descanso, observacoes: e.observacoes,
             tecnica: e.tecnica, tecnicaObs: e.tecnicaObs,
@@ -1894,10 +2024,12 @@ class Component extends DCLogic {
       enviarFeedbackGeral: () => this.onEnviarFeedbackGeral(),
       feedbackGeralLabel: this.state.feedbackGeralEnviado ? 'Enviado ✓' : (this.state.feedbackGeralEnviando ? 'Enviando…' : 'Enviar feedback'),
 
-      fotosEvolucao: this.state.fotosEvolucao.map(f => ({ url: f.url })),
+      fotosPorData: fotosPorData,
       semFotosEvolucao: this.state.fotosEvolucao.length === 0,
       onFotoUpload: (e) => this.onFotoUpload(e),
       fotoUploadLabel: this.state.fotoUploadBusy ? 'Enviando…' : '+ Fotos',
+      temComparacoes: comparacoesList.length > 0,
+      comparacoesList: comparacoesList,
 
       semDieta: !dietaAtual,
       dietaSemRefeicoes: !!dietaAtual && refeicoesData.length === 0,
@@ -1915,8 +2047,8 @@ class Component extends DCLogic {
       semPeso: pesoData.length === 0,
       temPeso: pesoData.length > 0,
       pesoHistoricoList: pesoData,
-      semMedidas: true,
-      medidas: [],
+      semMedidas: medidasData.length === 0,
+      medidas: medidasData,
       semRecordes: true,
       recordes: [],
 

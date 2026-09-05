@@ -134,7 +134,7 @@ const TABS = [
   ['avaliacao_fisica', 'Avaliação Física'],
   ['dieta', 'Dieta'],
   ['cardio', 'Cardio'],
-  ['fotos', 'Fotos'],
+  ['evolucao', 'Evolução'],
   ['feedback', 'Feedback'],
   ['agendamentos', 'Agendamentos']
 ];
@@ -234,6 +234,20 @@ let avaliacoesFisicas = [];
 let avaliacaoFisicaFormOpen = false;
 let avaliacaoFisicaEditId = '';
 let fotosList = [];
+let pesoList = [];
+let medidasList = [];
+let comparacoesList = [];
+let evolucaoSubTab = 'linha_tempo';
+let pesoFormOpen = false;
+let medidaFormOpen = false;
+let medidaEditId = '';
+let medidaCompararSelecionando = false;
+let medidaCompararDataA = '';
+let medidaCompararDataB = '';
+let medidaCompararAberto = false;
+let comparacaoFormOpen = false;
+let comparacaoSelecaoAntes = [];
+let comparacaoSelecaoDepois = [];
 let feedbacksList = [];
 let convite = null;
 let conviteLinkAberto = false;
@@ -276,13 +290,16 @@ async function init() {
   if (!cl) { window.location.href = 'alunos.html'; return; }
   cliente = cl;
 
-  const [exsRes, tecsRes, trRes, dietaRes, cardioRes, avFisicaRes, anamneseRes, anamneseDinRes, tplTrainerRes, fotosRes, feedbacksRes, agRes, convRes] = await Promise.all([
+  const [exsRes, tecsRes, trRes, dietaRes, cardioRes, avFisicaRes, pesoRes, medidasRes, comparacoesRes, anamneseRes, anamneseDinRes, tplTrainerRes, fotosRes, feedbacksRes, agRes, convRes] = await Promise.all([
     supabaseClient.from('exercicios').select('id, nome').eq('trainer_id', userId).order('nome'),
     supabaseClient.from('tecnicas_avancadas').select('id, nome, observacao').eq('trainer_id', userId).order('created_at'),
     supabaseClient.from('treinos').select('*').eq('cliente_id', clienteIdParam).order('created_at', { ascending: false }),
     supabaseClient.from('dietas').select('*').eq('cliente_id', clienteIdParam).order('created_at', { ascending: false }),
     supabaseClient.from('cardio_protocolos').select('*').eq('cliente_id', clienteIdParam).order('created_at', { ascending: false }),
     supabaseClient.from('avaliacoes_fisicas').select('*').eq('cliente_id', clienteIdParam).order('data', { ascending: false }),
+    supabaseClient.from('registros_peso').select('*').eq('cliente_id', clienteIdParam).order('data', { ascending: false }),
+    supabaseClient.from('medidas_corporais').select('*').eq('cliente_id', clienteIdParam).order('data', { ascending: false }),
+    supabaseClient.from('comparacoes_fotos').select('*').eq('cliente_id', clienteIdParam).order('created_at', { ascending: false }),
     supabaseClient.from('anamnese_respostas').select('*').eq('cliente_id', clienteIdParam).maybeSingle(),
     supabaseClient.from('anamnese_respostas_dinamicas').select('*').eq('cliente_id', clienteIdParam).maybeSingle(),
     supabaseClient.from('anamnese_templates').select('estrutura').eq('trainer_id', userId).maybeSingle(),
@@ -297,6 +314,9 @@ async function init() {
   dietaList = dietaRes.data || [];
   cardioList = cardioRes.data || [];
   avaliacoesFisicas = avFisicaRes.data || [];
+  pesoList = pesoRes.data || [];
+  medidasList = medidasRes.data || [];
+  comparacoesList = comparacoesRes.data || [];
   anamnese = anamneseRes.data || null;
   anamneseDinamica = (anamneseDinRes.data && anamneseDinRes.data.respostas) || {};
   anamneseEstrutura = tplTrainerRes.data && tplTrainerRes.data.estrutura;
@@ -336,7 +356,7 @@ function render() {
   else if (activeTab === 'anamnese') renderAnamneseTab(body);
   else if (activeTab === 'energetico') renderEnergeticoTab(body);
   else if (activeTab === 'avaliacao_fisica') renderAvaliacaoFisicaTab(body);
-  else if (activeTab === 'fotos') renderFotosTab(body);
+  else if (activeTab === 'evolucao') renderEvolucaoTab(body);
   else if (activeTab === 'feedback') renderFeedbackTab(body);
   else if (activeTab === 'agendamentos') renderAgendamentosTab(body);
   app.appendChild(body);
@@ -1351,29 +1371,439 @@ function renderCardioForm(container) {
   container.appendChild(box);
 }
 
-// ---------- FOTOS ----------
+// ---------- EVOLUÇÃO ----------
 
-function renderFotosTab(container) {
-  const inicial = fotosList.filter(f => f.tipo === 'inicial');
-  const evolucao = fotosList.filter(f => f.tipo === 'evolucao');
+const EVOLUCAO_SUBTABS = [
+  ['linha_tempo', 'Linha do tempo'],
+  ['peso', 'Peso'],
+  ['medidas', 'Medidas'],
+  ['fotos', 'Fotos'],
+  ['comparacoes', 'Comparações']
+];
+
+const MEDIDAS_CAMPOS = [
+  ['braco_direito', 'Braço direito'], ['braco_esquerdo', 'Braço esquerdo'],
+  ['ombros', 'Ombros'], ['peitoral', 'Peitoral'],
+  ['cintura', 'Cintura'], ['abdomen', 'Abdômen'], ['quadril', 'Quadril'],
+  ['coxa_direita', 'Coxa direita'], ['coxa_esquerda', 'Coxa esquerda'],
+  ['panturrilha_direita', 'Panturrilha direita'], ['panturrilha_esquerda', 'Panturrilha esquerda']
+];
+
+function fmtDataBR(d) { return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR'); }
+
+function renderEvolucaoTab(container) {
+  const bar = el('<div class="tabs" style="margin-bottom:16px;"></div>');
+  EVOLUCAO_SUBTABS.forEach(([key, label]) => {
+    const t = el('<div class="tab' + (evolucaoSubTab === key ? ' active' : '') + '">' + label + '</div>');
+    t.addEventListener('click', () => { evolucaoSubTab = key; pesoFormOpen = false; medidaFormOpen = false; medidaCompararAberto = false; comparacaoFormOpen = false; render(); });
+    bar.appendChild(t);
+  });
+  container.appendChild(bar);
+
+  if (evolucaoSubTab === 'peso') renderEvolucaoPeso(container);
+  else if (evolucaoSubTab === 'medidas') renderEvolucaoMedidas(container);
+  else if (evolucaoSubTab === 'fotos') renderEvolucaoFotos(container);
+  else if (evolucaoSubTab === 'comparacoes') renderEvolucaoComparacoes(container);
+  else renderEvolucaoLinhaTempo(container);
+}
+
+function renderEvolucaoLinhaTempo(container) {
+  const mapa = {};
+  const touch = (data) => { if (!mapa[data]) mapa[data] = { peso: null, medidas: null, avaliacao: null, fotos: [] }; return mapa[data]; };
+  pesoList.forEach(p => { touch(p.data).peso = p; });
+  medidasList.forEach(m => { touch(m.data).medidas = m; });
+  avaliacoesFisicas.forEach(a => { touch(a.data).avaliacao = a; });
+  fotosList.forEach(f => { const d = (f.created_at || '').slice(0, 10); if (d) touch(d).fotos.push(f); });
+
+  const datas = Object.keys(mapa).sort((a, b) => b.localeCompare(a));
+  if (!datas.length) {
+    container.appendChild(el('<div class="empty">Nenhum registro de evolução ainda. Peso, medidas, avaliação física e fotos aparecem aqui conforme forem cadastrados.</div>'));
+    return;
+  }
+  datas.forEach(data => {
+    const ev = mapa[data];
+    const partes = [];
+    if (ev.peso) partes.push('Peso ' + ev.peso.peso + ' kg' + (ev.peso.origem === 'anamnese' ? ' (inicial)' : ''));
+    if (ev.medidas) partes.push('Medidas registradas');
+    if (ev.avaliacao) partes.push('Avaliação física registrada');
+    if (ev.fotos.length) partes.push(ev.fotos.length + (ev.fotos.length === 1 ? ' foto' : ' fotos'));
+    container.appendChild(el(
+      '<div class="list-row">' +
+        '<div class="list-row-nome">' + fmtDataBR(data) + '</div>' +
+        '<div class="list-row-meta">' + partes.join(' · ') + '</div>' +
+      '</div>'
+    ));
+  });
+}
+
+// ---- Peso ----
+
+function renderEvolucaoPeso(container) {
+  if (pesoFormOpen) { renderPesoForm(container); return; }
+  if (!pesoList.length) {
+    container.appendChild(el('<div class="empty">Nenhum peso registrado ainda.</div>'));
+  }
+  pesoList.forEach(p => {
+    const row = el(
+      '<div class="list-row">' +
+        '<div class="list-row-nome">' + fmtDataBR(p.data) + '</div>' +
+        '<div class="list-row-meta">' + p.peso + ' kg' + (p.origem === 'anamnese' ? ' · <span style="color:#f97316;">Peso inicial — Anamnese</span>' : '') + '</div>' +
+      '</div>'
+    );
+    const actions = el('<div class="list-row-actions"></div>');
+    const delBtn = el('<button type="button" class="btn-ghost">Excluir</button>');
+    delBtn.addEventListener('click', async () => {
+      if (!window.confirm('Excluir esse registro de peso?')) return;
+      await supabaseClient.from('registros_peso').delete().eq('id', p.id);
+      pesoList = pesoList.filter(x => x.id !== p.id);
+      render();
+    });
+    actions.appendChild(delBtn);
+    row.appendChild(actions);
+    container.appendChild(row);
+  });
+  const novoBtn = el('<button type="button" class="btn btn-outline btn-block" style="margin-top:6px;">+ Novo peso</button>');
+  novoBtn.addEventListener('click', () => { pesoFormOpen = true; render(); });
+  container.appendChild(novoBtn);
+}
+
+function renderPesoForm(container) {
+  const box = el('<div class="form-box"></div>');
+  const row = el('<div class="field-row"></div>');
+  const pesoInput = el('<input type="number" min="0" step="0.1" placeholder="Ex: 97.2">');
+  const colPeso = el('<div></div>'); colPeso.appendChild(el('<label>Peso (kg)</label>')); colPeso.appendChild(pesoInput);
+  const dataInput = el('<input type="date">');
+  dataInput.value = new Date().toISOString().slice(0, 10);
+  const colData = el('<div></div>'); colData.appendChild(el('<label>Data</label>')); colData.appendChild(dataInput);
+  row.appendChild(colPeso); row.appendChild(colData);
+  box.appendChild(row);
+
+  const erro = el('<div class="erro" style="display:none;"></div>');
+  box.appendChild(erro);
+
+  const actions = el('<div class="actions-row"></div>');
+  const cancelBtn = el('<button type="button" class="btn btn-secondary">Cancelar</button>');
+  cancelBtn.addEventListener('click', () => { pesoFormOpen = false; render(); });
+  const salvarBtn = el('<button type="button" class="btn btn-primary">Salvar</button>');
+  salvarBtn.addEventListener('click', async () => {
+    const peso = Number(pesoInput.value);
+    if (!(peso > 0)) { erro.textContent = 'Informe um peso válido.'; erro.style.display = ''; return; }
+    if (!dataInput.value) { erro.textContent = 'Informe a data.'; erro.style.display = ''; return; }
+    salvarBtn.disabled = true; salvarBtn.textContent = 'Salvando…';
+    const { error } = await supabaseClient.from('registros_peso').upsert(
+      { cliente_id: clienteIdParam, trainer_id: userId, peso, data: dataInput.value },
+      { onConflict: 'cliente_id,data' }
+    );
+    if (error) { erro.textContent = error.message; erro.style.display = ''; salvarBtn.disabled = false; salvarBtn.textContent = 'Salvar'; return; }
+    const { data } = await supabaseClient.from('registros_peso').select('*').eq('cliente_id', clienteIdParam).order('data', { ascending: false });
+    pesoList = data || [];
+    pesoFormOpen = false;
+    render();
+  });
+  actions.appendChild(cancelBtn); actions.appendChild(salvarBtn);
+  box.appendChild(actions);
+  container.appendChild(box);
+}
+
+// ---- Medidas ----
+
+function renderEvolucaoMedidas(container) {
+  if (medidaFormOpen) { renderMedidaForm(container); return; }
+  if (medidaCompararAberto) { renderMedidaComparacao(container); return; }
+
+  if (!medidasList.length) {
+    container.appendChild(el('<div class="empty">Nenhuma medida registrada ainda.</div>'));
+  }
+  medidasList.forEach(m => {
+    const resumo = MEDIDAS_CAMPOS.filter(([chave]) => m[chave] != null).map(([chave, label]) => label + ' ' + m[chave] + 'cm').join(' · ');
+    const row = el(
+      '<div class="list-row">' +
+        '<div class="list-row-nome">' + fmtDataBR(m.data) + '</div>' +
+        '<div class="list-row-meta">' + (resumo || 'Sem valores preenchidos') + '</div>' +
+      '</div>'
+    );
+    const actions = el('<div class="list-row-actions"></div>');
+    const editBtn = el('<button type="button" class="btn-ghost" style="color:#9aa4b2;">Editar</button>');
+    editBtn.addEventListener('click', () => { medidaEditId = m.id; medidaFormOpen = true; render(); });
+    const delBtn = el('<button type="button" class="btn-ghost">Excluir</button>');
+    delBtn.addEventListener('click', async () => {
+      if (!window.confirm('Excluir essa medição?')) return;
+      await supabaseClient.from('medidas_corporais').delete().eq('id', m.id);
+      medidasList = medidasList.filter(x => x.id !== m.id);
+      render();
+    });
+    actions.appendChild(editBtn); actions.appendChild(delBtn);
+    row.appendChild(actions);
+    container.appendChild(row);
+  });
+
+  const btnRow = el('<div style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap;"></div>');
+  const novoBtn = el('<button type="button" class="btn btn-outline" style="flex:1;min-width:160px;">+ Nova medida</button>');
+  novoBtn.addEventListener('click', () => { medidaEditId = ''; medidaFormOpen = true; render(); });
+  btnRow.appendChild(novoBtn);
+  if (medidasList.length >= 2) {
+    const compararBtn = el('<button type="button" class="btn btn-secondary" style="flex:1;min-width:160px;">Comparar datas</button>');
+    compararBtn.addEventListener('click', () => {
+      medidaCompararDataA = medidasList[1].data; medidaCompararDataB = medidasList[0].data;
+      medidaCompararAberto = true; render();
+    });
+    btnRow.appendChild(compararBtn);
+  }
+  container.appendChild(btnRow);
+}
+
+function renderMedidaForm(container) {
+  const editando = medidasList.find(m => m.id === medidaEditId);
+  const box = el('<div class="form-box"></div>');
+
+  const dataInput = el('<input type="date">');
+  dataInput.value = editando ? editando.data : new Date().toISOString().slice(0, 10);
+  box.appendChild(el('<label>Data</label>')); box.appendChild(dataInput);
+
+  const grid = el('<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;margin-bottom:14px;"></div>');
+  const inputs = {};
+  MEDIDAS_CAMPOS.forEach(([chave, label]) => {
+    const input = el('<input type="number" min="0" step="0.1" placeholder="cm">');
+    input.value = editando && editando[chave] != null ? editando[chave] : '';
+    const col = el('<div></div>');
+    col.appendChild(el('<label>' + label + ' (cm)</label>'));
+    col.appendChild(input);
+    grid.appendChild(col);
+    inputs[chave] = input;
+  });
+  box.appendChild(grid);
+
+  const erro = el('<div class="erro" style="display:none;"></div>');
+  box.appendChild(erro);
+
+  const actions = el('<div class="actions-row"></div>');
+  const cancelBtn = el('<button type="button" class="btn btn-secondary">Cancelar</button>');
+  cancelBtn.addEventListener('click', () => { medidaFormOpen = false; render(); });
+  const salvarBtn = el('<button type="button" class="btn btn-primary">' + (editando ? 'Salvar alterações' : 'Criar medição') + '</button>');
+  salvarBtn.addEventListener('click', async () => {
+    if (!dataInput.value) { erro.textContent = 'Informe a data.'; erro.style.display = ''; return; }
+    const payload = { data: dataInput.value };
+    let algumPreenchido = false;
+    MEDIDAS_CAMPOS.forEach(([chave]) => {
+      const v = inputs[chave].value;
+      if (v) { payload[chave] = Number(v); algumPreenchido = true; }
+      else payload[chave] = null;
+    });
+    if (!algumPreenchido) { erro.textContent = 'Preencha pelo menos uma medida.'; erro.style.display = ''; return; }
+    salvarBtn.disabled = true; salvarBtn.textContent = 'Salvando…';
+    let error;
+    if (editando) {
+      ({ error } = await supabaseClient.from('medidas_corporais').update(payload).eq('id', editando.id));
+    } else {
+      ({ error } = await supabaseClient.from('medidas_corporais').insert({ ...payload, trainer_id: userId, cliente_id: clienteIdParam }));
+    }
+    if (error) { erro.textContent = error.message; erro.style.display = ''; salvarBtn.disabled = false; salvarBtn.textContent = editando ? 'Salvar alterações' : 'Criar medição'; return; }
+    const { data } = await supabaseClient.from('medidas_corporais').select('*').eq('cliente_id', clienteIdParam).order('data', { ascending: false });
+    medidasList = data || [];
+    medidaFormOpen = false;
+    render();
+  });
+  actions.appendChild(cancelBtn); actions.appendChild(salvarBtn);
+  box.appendChild(actions);
+  container.appendChild(box);
+}
+
+function renderMedidaComparacao(container) {
+  const box = el('<div class="form-box"></div>');
+  const row = el('<div class="field-row"></div>');
+  const selA = el('<select></select>');
+  const selB = el('<select></select>');
+  medidasList.forEach(m => {
+    selA.appendChild(el('<option value="' + m.data + '"' + (m.data === medidaCompararDataA ? ' selected' : '') + '>' + fmtDataBR(m.data) + '</option>'));
+    selB.appendChild(el('<option value="' + m.data + '"' + (m.data === medidaCompararDataB ? ' selected' : '') + '>' + fmtDataBR(m.data) + '</option>'));
+  });
+  selA.addEventListener('change', () => { medidaCompararDataA = selA.value; render(); });
+  selB.addEventListener('change', () => { medidaCompararDataB = selB.value; render(); });
+  const colA = el('<div></div>'); colA.appendChild(el('<label>Data anterior</label>')); colA.appendChild(selA);
+  const colB = el('<div></div>'); colB.appendChild(el('<label>Data atual</label>')); colB.appendChild(selB);
+  row.appendChild(colA); row.appendChild(colB);
+  box.appendChild(row);
+
+  const mA = medidasList.find(m => m.data === medidaCompararDataA);
+  const mB = medidasList.find(m => m.data === medidaCompararDataB);
+  if (mA && mB) {
+    const table = el('<div style="display:flex;flex-direction:column;gap:6px;margin-top:14px;"></div>');
+    table.appendChild(el(
+      '<div style="display:grid;grid-template-columns:1.4fr 1fr 1fr .8fr;gap:8px;font-size:10.5px;font-weight:800;color:#66707e;text-transform:uppercase;letter-spacing:.03em;padding:0 2px;">' +
+      '<div>Medida</div><div>Anterior</div><div>Atual</div><div>Diferença</div></div>'
+    ));
+    MEDIDAS_CAMPOS.forEach(([chave, label]) => {
+      const vA = mA[chave], vB = mB[chave];
+      if (vA == null && vB == null) return;
+      const diff = (vA != null && vB != null) ? (vB - vA) : null;
+      const diffTxt = diff == null ? '—' : (diff > 0 ? '+' : '') + Number(diff.toFixed(1)) + ' cm';
+      const diffCor = diff == null ? '#66707e' : diff > 0 ? '#4ade80' : diff < 0 ? '#f87171' : '#9aa4b2';
+      table.appendChild(el(
+        '<div style="display:grid;grid-template-columns:1.4fr 1fr 1fr .8fr;gap:8px;font-size:12.5px;padding:8px 2px;border-top:1px solid #171d29;">' +
+        '<div>' + label + '</div><div>' + (vA != null ? vA + ' cm' : '—') + '</div><div>' + (vB != null ? vB + ' cm' : '—') + '</div>' +
+        '<div style="color:' + diffCor + ';font-weight:700;">' + diffTxt + '</div></div>'
+      ));
+    });
+    box.appendChild(table);
+  }
+
+  const fecharBtn = el('<button type="button" class="btn btn-secondary btn-block" style="margin-top:16px;">Fechar comparação</button>');
+  fecharBtn.addEventListener('click', () => { medidaCompararAberto = false; render(); });
+  box.appendChild(fecharBtn);
+  container.appendChild(box);
+}
+
+// ---- Fotos ----
+
+function renderEvolucaoFotos(container) {
+  const uploadWrap = el('<label class="btn btn-outline btn-block" style="display:block;text-align:center;cursor:pointer;margin-bottom:16px;">+ Adicionar foto</label>');
+  const fileInput = el('<input type="file" accept="image/*" style="display:none;">');
+  uploadWrap.appendChild(fileInput);
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    uploadWrap.textContent = 'Enviando…';
+    const path = clienteIdParam + '/' + Date.now() + '-' + file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+    const { error: upErr } = await supabaseClient.storage.from('fotos-evolucao').upload(path, file);
+    if (upErr) { alert('Não foi possível enviar a foto: ' + upErr.message); render(); return; }
+    await supabaseClient.from('fotos_evolucao').insert({ cliente_id: clienteIdParam, trainer_id: userId, url: path, tipo: 'evolucao', enviado_por_aluno: false });
+    const { data: fotosRaw } = await supabaseClient.from('fotos_evolucao').select('*').eq('cliente_id', clienteIdParam).order('created_at', { ascending: false });
+    if (fotosRaw && fotosRaw.length) {
+      const { data: signed } = await supabaseClient.storage.from('fotos-evolucao').createSignedUrls(fotosRaw.map(f => f.url), 60 * 60 * 24 * 7);
+      fotosList = fotosRaw.map((f, i) => ({ ...f, url: (signed && signed[i] && signed[i].signedUrl) || '' }));
+    } else {
+      fotosList = [];
+    }
+    render();
+  });
+  container.appendChild(uploadWrap);
 
   if (!fotosList.length) {
-    container.appendChild(el('<div class="empty">Nenhuma foto enviada ainda. As fotos aparecem aqui assim que o aluno enviar pela anamnese ou pelo app.</div>'));
+    container.appendChild(el('<div class="empty">Nenhuma foto enviada ainda. As fotos aparecem aqui assim que o aluno enviar pela anamnese ou pelo app, ou quando você adicionar acima.</div>'));
     return;
   }
 
-  const galeria = (titulo, lista) => {
-    if (!lista.length) return;
-    container.appendChild(el('<div class="sub" style="margin:0 0 10px;font-weight:700;color:#e5e9f0;">' + titulo + '</div>'));
+  const porData = {};
+  fotosList.forEach(f => { const d = (f.created_at || '').slice(0, 10); (porData[d] = porData[d] || []).push(f); });
+  Object.keys(porData).sort((a, b) => b.localeCompare(a)).forEach(data => {
+    container.appendChild(el('<div class="sub" style="margin:0 0 10px;font-weight:700;color:#e5e9f0;">' + fmtDataBR(data) + '</div>'));
     const grid = el('<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-bottom:22px;"></div>');
-    lista.forEach(f => {
+    porData[data].forEach(f => {
       grid.appendChild(el('<img src="' + f.url + '" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;border:1px solid #1e2633;">'));
     });
     container.appendChild(grid);
-  };
+  });
+}
 
-  galeria('Fotos iniciais (anamnese)', inicial);
-  galeria('Evolução', evolucao);
+// ---- Comparações ----
+
+let comparacaoModoAtivo = 'antes';
+
+function renderEvolucaoComparacoes(container) {
+  if (comparacaoFormOpen) { renderComparacaoForm(container); return; }
+
+  if (!comparacoesList.length) {
+    container.appendChild(el('<div class="empty">Nenhuma comparação criada ainda.</div>'));
+  }
+  comparacoesList.forEach(c => container.appendChild(renderComparacaoCard(c)));
+
+  const novoBtn = el('<button type="button" class="btn btn-outline btn-block" style="margin-top:6px;">+ Criar comparação</button>');
+  novoBtn.addEventListener('click', () => {
+    if (!fotosList.length) { alert('Envie fotos na aba "Fotos" antes de criar uma comparação.'); return; }
+    comparacaoSelecaoAntes = []; comparacaoSelecaoDepois = []; comparacaoModoAtivo = 'antes';
+    comparacaoFormOpen = true; render();
+  });
+  container.appendChild(novoBtn);
+}
+
+function renderComparacaoForm(container) {
+  const box = el('<div class="form-box"></div>');
+  box.appendChild(el('<div class="sub" style="margin:0 0 14px;">Escolha o lado ativo abaixo e clique nas fotos pra adicionar.</div>'));
+
+  const modoRow = el('<div class="sexo-row" style="margin-bottom:16px;"></div>');
+  const chipAntes = el('<div class="chip' + (comparacaoModoAtivo === 'antes' ? ' sel' : '') + '">Antes (' + comparacaoSelecaoAntes.length + ')</div>');
+  const chipDepois = el('<div class="chip' + (comparacaoModoAtivo === 'depois' ? ' sel' : '') + '">Depois (' + comparacaoSelecaoDepois.length + ')</div>');
+  chipAntes.addEventListener('click', () => { comparacaoModoAtivo = 'antes'; render(); });
+  chipDepois.addEventListener('click', () => { comparacaoModoAtivo = 'depois'; render(); });
+  modoRow.appendChild(chipAntes); modoRow.appendChild(chipDepois);
+  box.appendChild(modoRow);
+
+  const porData = {};
+  fotosList.forEach(f => { const d = (f.created_at || '').slice(0, 10); (porData[d] = porData[d] || []).push(f); });
+  Object.keys(porData).sort((a, b) => b.localeCompare(a)).forEach(data => {
+    box.appendChild(el('<div class="list-row-meta" style="text-transform:uppercase;letter-spacing:.04em;font-size:10.5px;margin:10px 0 6px;">' + fmtDataBR(data) + '</div>'));
+    const grid = el('<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px;margin-bottom:10px;"></div>');
+    porData[data].forEach(f => {
+      const selecionadaAntes = comparacaoSelecaoAntes.includes(f.id);
+      const selecionadaDepois = comparacaoSelecaoDepois.includes(f.id);
+      const cor = selecionadaAntes ? '#3b82f6' : selecionadaDepois ? '#4ade80' : 'transparent';
+      const wrap = el('<div style="position:relative;cursor:pointer;"></div>');
+      wrap.appendChild(el('<img src="' + f.url + '" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:8px;border:2px solid ' + cor + ';">'));
+      if (selecionadaAntes) wrap.appendChild(el('<div style="position:absolute;top:4px;left:4px;background:#3b82f6;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px;">ANTES</div>'));
+      if (selecionadaDepois) wrap.appendChild(el('<div style="position:absolute;top:4px;left:4px;background:#4ade80;color:#0a0d13;font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px;">DEPOIS</div>'));
+      wrap.addEventListener('click', () => {
+        comparacaoSelecaoAntes = comparacaoSelecaoAntes.filter(id => id !== f.id);
+        comparacaoSelecaoDepois = comparacaoSelecaoDepois.filter(id => id !== f.id);
+        if (comparacaoModoAtivo === 'antes') comparacaoSelecaoAntes.push(f.id); else comparacaoSelecaoDepois.push(f.id);
+        render();
+      });
+      grid.appendChild(wrap);
+    });
+    box.appendChild(grid);
+  });
+
+  const erro = el('<div class="erro" style="display:none;"></div>');
+  box.appendChild(erro);
+  const actions = el('<div class="actions-row"></div>');
+  const cancelBtn = el('<button type="button" class="btn btn-secondary">Cancelar</button>');
+  cancelBtn.addEventListener('click', () => { comparacaoFormOpen = false; render(); });
+  const salvarBtn = el('<button type="button" class="btn btn-primary">Salvar comparação</button>');
+  salvarBtn.addEventListener('click', async () => {
+    if (!comparacaoSelecaoAntes.length || !comparacaoSelecaoDepois.length) { erro.textContent = 'Selecione pelo menos uma foto de "Antes" e uma de "Depois".'; erro.style.display = ''; return; }
+    salvarBtn.disabled = true; salvarBtn.textContent = 'Salvando…';
+    const { error } = await supabaseClient.from('comparacoes_fotos').insert({
+      cliente_id: clienteIdParam, trainer_id: userId,
+      fotos_antes_ids: comparacaoSelecaoAntes, fotos_depois_ids: comparacaoSelecaoDepois
+    });
+    if (error) { erro.textContent = error.message; erro.style.display = ''; salvarBtn.disabled = false; salvarBtn.textContent = 'Salvar comparação'; return; }
+    const { data } = await supabaseClient.from('comparacoes_fotos').select('*').eq('cliente_id', clienteIdParam).order('created_at', { ascending: false });
+    comparacoesList = data || [];
+    comparacaoFormOpen = false;
+    render();
+  });
+  actions.appendChild(cancelBtn); actions.appendChild(salvarBtn);
+  box.appendChild(actions);
+  container.appendChild(box);
+}
+
+function renderComparacaoCard(c) {
+  const fotoPorId = {}; fotosList.forEach(f => { fotoPorId[f.id] = f; });
+  const antesFotos = (c.fotos_antes_ids || []).map(id => fotoPorId[id]).filter(Boolean);
+  const depoisFotos = (c.fotos_depois_ids || []).map(id => fotoPorId[id]).filter(Boolean);
+  const card = el('<div class="list-row"></div>');
+  const grid = el('<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px;"></div>');
+  const coluna = (titulo, cor, fotos) => {
+    const col = el('<div></div>');
+    col.appendChild(el('<div style="font-size:10.5px;font-weight:800;color:' + cor + ';text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">' + titulo + (fotos[0] ? ' — ' + fmtDataBR((fotos[0].created_at || '').slice(0, 10)) : '') + '</div>'));
+    const g = el('<div style="display:grid;grid-template-columns:repeat(' + (fotos.length > 1 ? 2 : 1) + ',1fr);gap:6px;"></div>');
+    fotos.forEach(f => g.appendChild(el('<img src="' + f.url + '" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:8px;border:1px solid #1e2633;">')));
+    col.appendChild(g);
+    return col;
+  };
+  grid.appendChild(coluna('Antes', '#3b82f6', antesFotos));
+  grid.appendChild(coluna('Depois', '#4ade80', depoisFotos));
+  card.appendChild(grid);
+  const actions = el('<div class="list-row-actions"></div>');
+  const delBtn = el('<button type="button" class="btn-ghost">Excluir</button>');
+  delBtn.addEventListener('click', async () => {
+    if (!window.confirm('Excluir essa comparação?')) return;
+    await supabaseClient.from('comparacoes_fotos').delete().eq('id', c.id);
+    comparacoesList = comparacoesList.filter(x => x.id !== c.id);
+    render();
+  });
+  actions.appendChild(delBtn);
+  card.appendChild(actions);
+  return card;
 }
 
 // ---------- FEEDBACK ----------

@@ -411,9 +411,9 @@ class Component extends DCLogic {
       ]);
 
       await supabaseClient.from('fotos_evolucao').insert([
-        { cliente_id: this.state.clienteId, trainer_id: this.state.trainerId, url: pathFrente, tipo: 'inicial' },
-        { cliente_id: this.state.clienteId, trainer_id: this.state.trainerId, url: pathLado, tipo: 'inicial' },
-        { cliente_id: this.state.clienteId, trainer_id: this.state.trainerId, url: pathCostas, tipo: 'inicial' }
+        { cliente_id: this.state.clienteId, trainer_id: this.state.trainerId, url: pathFrente, tipo: 'inicial', enviado_por_aluno: true },
+        { cliente_id: this.state.clienteId, trainer_id: this.state.trainerId, url: pathLado, tipo: 'inicial', enviado_por_aluno: true },
+        { cliente_id: this.state.clienteId, trainer_id: this.state.trainerId, url: pathCostas, tipo: 'inicial', enviado_por_aluno: true }
       ]);
 
       const { error: anamneseErr } = await supabaseClient.from('anamnese_respostas').upsert({
